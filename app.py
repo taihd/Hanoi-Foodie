@@ -1,27 +1,55 @@
 """Restaurant & Dish Explorer Streamlit App"""
 import streamlit as st
-import json
-from typing import List, Dict, Any
+import psycopg2
+from psycopg2.extras import DictCursor
 import os
+from typing import List, Dict, Any
+from dotenv import load_dotenv
 
-# Page config
-st.set_page_config(
-    page_title="Restaurant & Dish Explorer",
-    page_icon="🍜",
-    layout="wide"
-)
+# Load environment variables
+load_dotenv()
+
+# Database connection parameters
+DB_CONFIG = {
+    "dbname": os.getenv("DB_NAME"),
+    "user": os.getenv("DB_USER"),
+    "password": os.getenv("DB_PASSWORD"),
+    "host": os.getenv("DB_HOST"),
+    "port": os.getenv("DB_PORT", "5432")
+}
+
+def get_db_connection():
+    """Get database connection."""
+    return psycopg2.connect(**DB_CONFIG)
 
 def load_data():
-    """Load all data from JSON files."""
-    with open('data/restaurants.json', 'r', encoding='utf-8') as f:
-        restaurants = json.load(f)
-    
-    with open('data/dishes.json', 'r', encoding='utf-8') as f:
-        dishes = json.load(f)
-    
-    with open('data/restaurant_dishes.json', 'r', encoding='utf-8') as f:
-        restaurant_dishes = json.load(f)
-    
+    """Load all data from database."""
+    with get_db_connection() as conn:
+        with conn.cursor(cursor_factory=DictCursor) as cursor:
+            # Get restaurants
+            cursor.execute("""
+                SELECT id, name, address, website, google_url, rating, 
+                       phone, opening_hours, images, notes
+                FROM restaurants
+            """)
+            restaurants = [dict(r) for r in cursor.fetchall()]
+            
+            # Get dishes
+            cursor.execute("""
+                SELECT id, name, description, images, notes
+                FROM dishes
+            """)
+            dishes = [dict(d) for d in cursor.fetchall()]
+            
+            # Get restaurant-dish relationships
+            cursor.execute("""
+                SELECT r.name as restaurant, d.name as dish, rd.price
+                FROM restaurant_dishes rd
+                JOIN restaurants r ON rd.restaurant_id = r.id
+                JOIN dishes d ON rd.dish_id = d.id
+            """)
+            restaurant_dishes = [dict(rd) for rd in cursor.fetchall()]
+            
     return restaurants, dishes, restaurant_dishes
 
 def get_restaurants_by_dish(dish_name: str, restaurants: List[Dict], relations: List[Dict]) -> List[Dict]:
